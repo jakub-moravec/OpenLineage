@@ -42,10 +42,34 @@
       },
       "required": ["run", "job"]
     },
+    "JobDependencyType": { 
+      "type": "string",
+      "description": "Used to describe whether the upstream job directly triggers the downstream job, or whether the dependency is implicit (e.g. time-based).",
+      "enum": ["DIRECT_INVOCATION",  "IMPLICIT_DEPENDENCY"]
+    },
+    "JobDependencySequenceTriggerRule": { 
+      "type": "string",
+      "description": "Used to describe the exact sequence condition on which the downstream job can be executed (FINISH_TO_START - downstream job can start when upstream finished; FINISH_TO_FINISH - job executions can overlap, but need to finish in specified order; START_TO_START - jobs need to start at the same time in parallel).",
+      "enum": ["FINISH_TO_START", "FINISH_TO_FINISH", "START_TO_START"]
+    },
+    "JobDependencyStatusTriggerRule": { 
+      "type": "string",
+      "description": "Used to describe if the downstream job should be run based on the status of the upstream job.",
+      "enum": ["EXECUTE_EVERY_TIME", "EXECUTE_ON_SUCCESS", "EXECUTE_ON_FAILURE"]
+    },
     "JobDependency": {
       "type": "object",
       "description": "Used to store all information about job dependency (e.g., job, run, root etc.).",
       "properties": {
+        "type": {
+          "$ref": "#/$defs/JobDependencyType"
+        },
+        "sequence_trigger_rule": {
+          "$ref": "#/$defs/JobDependencySequenceTriggerRule"
+        },
+        "status_trigger_rule": {
+          "$ref": "#/$defs/JobDependencyStatusTriggerRule"
+        },
         "job": {
           "$ref": "#/$defs/JobIdentifier"
         },
@@ -59,7 +83,7 @@
       "required": ["job"]
     },
     "JobDependenciesRunFacet": {
-      "description": "direct upstream and downstream relationships between job runs",
+      "description": "Job dependencies facet maps execution depencencies (control flow relationships) between upstream and downstream job runs",
       "allOf": [
         {
           "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunFacet"
