@@ -123,8 +123,8 @@ OPENLINEAGE__NAME__ESCAPING=false
 
 | Value | Behaviour |
 |-------|-----------|
-| _(unset or any other value)_ | Escaping **enabled** (default) |
-| `false` | Escaping **disabled** |
+| _(unset or any other value)_ | Escaping **disabled** (default) |
+| `true` | Escaping **enabled** |
 
 ## Additional Resources
 
