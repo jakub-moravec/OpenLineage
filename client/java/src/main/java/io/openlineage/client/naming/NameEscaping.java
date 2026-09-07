@@ -20,6 +20,12 @@ package io.openlineage.client.naming;
  * variable {@code OPENLINEAGE__NAME__ESCAPING} to {@code true} (case-insensitive), or by setting
  * {@code name.escaping: true} in the YAML configuration.
  *
+ * <p>When a {@link NameConfig} is available (e.g. loaded from YAML), prefer the overloads that
+ * accept it — {@link #isEscapingEnabled(NameConfig)} and {@link #escapeSegment(String, NameConfig)}
+ * — so that the YAML setting takes precedence over the environment variable. The zero-argument
+ * overloads consult only the environment variable and are intended for call sites that do not have
+ * access to a {@link NameConfig} instance.
+ *
  * <p>Example:
  *
  * <pre>{@code
@@ -34,10 +40,11 @@ public final class NameEscaping {
   private NameEscaping() {}
 
   /**
-   * Returns {@code true} if dot-escaping is enabled.
+   * Returns {@code true} if dot-escaping is enabled, consulting only the environment variable
+   * {@code OPENLINEAGE__NAME__ESCAPING}.
    *
-   * <p>Escaping is <em>disabled by default</em>. It can be enabled by setting the environment
-   * variable {@code OPENLINEAGE__NAME__ESCAPING=true} (case-insensitive).
+   * <p>Use {@link #isEscapingEnabled(NameConfig)} when a {@link NameConfig} is available so that
+   * the YAML setting takes precedence.
    *
    * @return {@code true} when escaping is active
    */
@@ -46,18 +53,51 @@ public final class NameEscaping {
   }
 
   /**
-   * Escapes dots in a single name segment when escaping is enabled.
+   * Returns {@code true} if dot-escaping is enabled, with the following resolution order:
    *
-   * <p>A literal {@code .} is replaced with {@code \\.} so that consumers can tell structural dots
-   * (separating segments) from literal dots that are part of a segment value.
+   * <ol>
+   *   <li>If {@code nameConfig} is non-{@code null} and its {@code escaping} field is non-{@code
+   *       null}, that value is returned.
+   *   <li>Otherwise the environment variable {@code OPENLINEAGE__NAME__ESCAPING} is consulted.
+   * </ol>
    *
-   * <p>The transformation is applied only when {@link #isEscapingEnabled()} returns {@code true};
-   * otherwise the segment is returned unchanged.
+   * @param nameConfig the parsed name configuration, may be {@code null}
+   * @return {@code true} when escaping is active
+   */
+  public static boolean isEscapingEnabled(NameConfig nameConfig) {
+    if (nameConfig != null && nameConfig.getEscaping() != null) {
+      return nameConfig.getEscaping();
+    }
+    return isEscapingEnabled();
+  }
+
+  /**
+   * Escapes dots in a single name segment when escaping is enabled, consulting only the environment
+   * variable.
+   *
+   * <p>Use {@link #escapeSegment(String, NameConfig)} when a {@link NameConfig} is available.
    *
    * @param segment a single name component (e.g. database, schema, table)
    * @return the segment with literal dots escaped, or unchanged when escaping is disabled
    */
   public static String escapeSegment(String segment) {
     return isEscapingEnabled() ? segment.replace(".", "\\.") : segment;
+  }
+
+  /**
+   * Escapes dots in a single name segment when escaping is enabled.
+   *
+   * <p>A literal {@code .} is replaced with {@code \\.} so that consumers can tell structural dots
+   * (separating segments) from literal dots that are part of a segment value.
+   *
+   * <p>The transformation is applied only when {@link #isEscapingEnabled(NameConfig)} returns
+   * {@code true}; otherwise the segment is returned unchanged.
+   *
+   * @param segment a single name component (e.g. database, schema, table)
+   * @param nameConfig the parsed name configuration, may be {@code null}
+   * @return the segment with literal dots escaped, or unchanged when escaping is disabled
+   */
+  public static String escapeSegment(String segment, NameConfig nameConfig) {
+    return isEscapingEnabled(nameConfig) ? segment.replace(".", "\\.") : segment;
   }
 }

@@ -8,6 +8,7 @@ package io.openlineage.client.naming;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.openlineage.client.OpenLineageClient;
 import io.openlineage.client.OpenLineageClientUtils;
 import io.openlineage.client.OpenLineageConfig;
 import java.lang.reflect.Field;
@@ -50,7 +51,7 @@ class NameEscapingTest {
   }
 
   // -----------------------------------------------------------------------
-  // isEscapingEnabled — env-var behaviour
+  // isEscapingEnabled() — env-var behaviour (zero-arg overload)
   // -----------------------------------------------------------------------
 
   @Test
@@ -108,7 +109,7 @@ class NameEscapingTest {
   }
 
   // -----------------------------------------------------------------------
-  // escapeSegment — transformation behaviour
+  // escapeSegment(String) — transformation behaviour (env-var overload)
   // -----------------------------------------------------------------------
 
   @Test
@@ -207,12 +208,135 @@ class NameEscapingTest {
           OpenLineageClientUtils.loadOpenLineageConfigFromEnvVars(
               new TypeReference<OpenLineageConfig<OpenLineageConfig<?>>>() {});
 
-      // nameConfig may be null when the env var was never set; null means "use default" (enabled)
+      // nameConfig may be null when the env var was never set; null means "use default" (disabled)
       if (config.getNameConfig() != null) {
         assertThat(config.getNameConfig().getEscaping()).isNull();
       }
     } finally {
       clearEnvironmentVariables(envVars.keySet());
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // isEscapingEnabled(NameConfig) — NameConfig overload behaviour
+  // -----------------------------------------------------------------------
+
+  @Test
+  void escapingEnabledViaNameConfig() throws Exception {
+    clearEnvironmentVariables(Set.of(ENV_VAR));
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(true);
+
+    assertThat(NameEscaping.isEscapingEnabled(cfg)).isTrue();
+  }
+
+  @Test
+  void escapingDisabledViaNameConfig() throws Exception {
+    clearEnvironmentVariables(Set.of(ENV_VAR));
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(false);
+
+    assertThat(NameEscaping.isEscapingEnabled(cfg)).isFalse();
+  }
+
+  @Test
+  void nameConfigTakesPrecedenceOverEnvVar() throws Exception {
+    // Env var says "true" but NameConfig says "false" → NameConfig wins.
+    Map<String, String> env = new HashMap<>();
+    env.put(ENV_VAR, "true");
+    setEnvironmentVariables(env);
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(false);
+
+    try {
+      assertThat(NameEscaping.isEscapingEnabled(cfg)).isFalse();
+    } finally {
+      clearEnvironmentVariables(env.keySet());
+    }
+  }
+
+  @Test
+  void nullNameConfigFallsBackToEnvVar() throws Exception {
+    Map<String, String> env = new HashMap<>();
+    env.put(ENV_VAR, "true");
+    setEnvironmentVariables(env);
+
+    try {
+      assertThat(NameEscaping.isEscapingEnabled((NameConfig) null)).isTrue();
+    } finally {
+      clearEnvironmentVariables(env.keySet());
+    }
+  }
+
+  @Test
+  void nameConfigWithNullEscapingFallsBackToEnvVar() throws Exception {
+    // A NameConfig whose escaping field is null should not override the env var.
+    Map<String, String> env = new HashMap<>();
+    env.put(ENV_VAR, "true");
+    setEnvironmentVariables(env);
+
+    try {
+      assertThat(NameEscaping.isEscapingEnabled(new NameConfig())).isTrue();
+    } finally {
+      clearEnvironmentVariables(env.keySet());
+    }
+  }
+
+  @Test
+  void escapeSegmentEscapesWhenEnabledViaNameConfig() throws Exception {
+    clearEnvironmentVariables(Set.of(ENV_VAR));
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(true);
+
+    assertThat(NameEscaping.escapeSegment("mydb.example.com", cfg))
+        .isEqualTo("mydb\\.example\\.com");
+  }
+
+  @Test
+  void escapeSegmentUnchangedWhenDisabledViaNameConfig() throws Exception {
+    clearEnvironmentVariables(Set.of(ENV_VAR));
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(false);
+
+    assertThat(NameEscaping.escapeSegment("mydb.example.com", cfg)).isEqualTo("mydb.example.com");
+  }
+
+  // -----------------------------------------------------------------------
+  // Builder integration — nameConfig field is stored on the client instance
+  // -----------------------------------------------------------------------
+
+  @Test
+  void builderNameConfigEscapingEnabled() throws Exception {
+    clearEnvironmentVariables(Set.of(ENV_VAR));
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(true);
+
+    // Build the client to confirm the config is accepted; verify escaping through the same config.
+    OpenLineageClient.builder().nameConfig(cfg).build().close();
+    assertThat(NameEscaping.escapeSegment("a.b", cfg)).isEqualTo("a\\.b");
+  }
+
+  @Test
+  void builderNameConfigEscapingDisabled() throws Exception {
+    Map<String, String> env = new HashMap<>();
+    env.put(ENV_VAR, "true");
+    setEnvironmentVariables(env);
+
+    NameConfig cfg = new NameConfig();
+    cfg.setEscaping(false);
+
+    // Even with env var true, the config says false → escaping off.
+    OpenLineageClient.builder().nameConfig(cfg).build().close();
+    try {
+      assertThat(NameEscaping.escapeSegment("a.b", cfg)).isEqualTo("a.b");
+    } finally {
+      clearEnvironmentVariables(env.keySet());
     }
   }
 

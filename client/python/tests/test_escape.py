@@ -3,7 +3,8 @@
 
 """Tests for the dot-escaping utilities."""
 
-from openlineage.client.naming.escape import escape, is_escaping_enabled
+import pytest
+from openlineage.client.naming.escape import configure, escape, is_escaping_enabled
 
 
 class TestIsEscapingEnabled:
@@ -81,3 +82,77 @@ class TestEscapingIntegrationWithNaming:
         monkeypatch.delenv("OPENLINEAGE__NAME__ESCAPING", raising=False)
         pg = Postgres("localhost", "5432", "mydb", "myschema", "mytable")
         assert pg.get_name() == "mydb.myschema.mytable"
+
+
+class TestConfigure:
+    """Tests for the configure() override that wires YAML config through."""
+
+    @pytest.fixture(autouse=True)
+    def reset_override(self):
+        """Always reset the module-level override after each test."""
+        yield
+        configure(None)
+
+    def test_configure_enables_escaping(self, monkeypatch):
+        monkeypatch.delenv("OPENLINEAGE__NAME__ESCAPING", raising=False)
+        configure(True)
+        assert is_escaping_enabled() is True
+
+    def test_configure_disables_escaping(self, monkeypatch):
+        monkeypatch.delenv("OPENLINEAGE__NAME__ESCAPING", raising=False)
+        configure(False)
+        assert is_escaping_enabled() is False
+
+    def test_configure_none_resets_to_env_var_true(self, monkeypatch):
+        monkeypatch.setenv("OPENLINEAGE__NAME__ESCAPING", "true")
+        configure(None)
+        assert is_escaping_enabled() is True
+
+    def test_configure_none_resets_to_env_var_false(self, monkeypatch):
+        monkeypatch.delenv("OPENLINEAGE__NAME__ESCAPING", raising=False)
+        configure(None)
+        assert is_escaping_enabled() is False
+
+    def test_configure_takes_precedence_over_env_var(self, monkeypatch):
+        # Env var says "true" but configure says False → configure wins.
+        monkeypatch.setenv("OPENLINEAGE__NAME__ESCAPING", "true")
+        configure(False)
+        assert is_escaping_enabled() is False
+
+    def test_configure_false_takes_precedence_over_env_var_true(self, monkeypatch):
+        monkeypatch.setenv("OPENLINEAGE__NAME__ESCAPING", "true")
+        configure(False)
+        assert escape("a.b") == "a.b"
+
+    def test_configure_true_escapes_segment(self, monkeypatch):
+        monkeypatch.delenv("OPENLINEAGE__NAME__ESCAPING", raising=False)
+        configure(True)
+        assert escape("mydb.example.com") == r"mydb\.example\.com"
+
+
+class TestOpenLineageConfigNameParsing:
+    """Verify that from_dict correctly parses the ``name`` section."""
+
+    def test_name_escaping_true_parsed(self):
+        from openlineage.client.client import OpenLineageConfig
+
+        cfg = OpenLineageConfig.from_dict({"name": {"escaping": True}})
+        assert cfg.name.escaping is True
+
+    def test_name_escaping_false_parsed(self):
+        from openlineage.client.client import OpenLineageConfig
+
+        cfg = OpenLineageConfig.from_dict({"name": {"escaping": False}})
+        assert cfg.name.escaping is False
+
+    def test_name_absent_defaults_to_none(self):
+        from openlineage.client.client import OpenLineageConfig
+
+        cfg = OpenLineageConfig.from_dict({})
+        assert cfg.name.escaping is None
+
+    def test_name_escaping_absent_defaults_to_none(self):
+        from openlineage.client.client import OpenLineageConfig
+
+        cfg = OpenLineageConfig.from_dict({"name": {}})
+        assert cfg.name.escaping is None
